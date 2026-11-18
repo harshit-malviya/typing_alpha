@@ -375,7 +375,7 @@ body {
 }
 
 .utility-select {
-  background: transparent;
+  background-color: var(--bg-elevated);
   color: var(--text-primary);
   border: none;
   font-size: 0.8rem;
@@ -384,9 +384,18 @@ body {
   outline: none;
 }
 
+.utility-select optgroup {
+  background-color: var(--bg-primary);
+  color: var(--accent-primary);
+  font-weight: 800;
+  font-style: normal;
+}
+
 .utility-select option {
-  background: var(--bg-secondary);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
+  font-weight: 600;
+  padding: 4px 8px;
 }
 
 .content-container {
