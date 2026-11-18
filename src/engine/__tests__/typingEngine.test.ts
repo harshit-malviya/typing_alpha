@@ -95,3 +95,42 @@ describe('adaptiveGenerator', () => {
     expect(unlockRes.newlyUnlockedLetter).toBe('s');
   });
 });
+
+
+import { generateTrackSchedule } from '../../data/learningCalendar';
+
+describe('learningCalendar', () => {
+  it('generates complete 14-day, 30-day, and 60-day study schedules where every task ONLY uses keys taught up to that day', () => {
+    const t14 = generateTrackSchedule('14-day');
+    const t30 = generateTrackSchedule('30-day');
+    const t60 = generateTrackSchedule('60-day');
+
+    expect(t14).toHaveLength(14);
+    expect(t30).toHaveLength(30);
+    expect(t60).toHaveLength(60);
+
+    // Day 1 of 30-day track teaches F & J only: verify Task 1, Task 2, and Task 3 ONLY contain 'f', 'j', and ' '
+    const day1 = t30[0];
+    expect(day1.cumulativeKeys).toEqual(['f', 'j']);
+    for (const task of day1.tasks) {
+      const text = task.resolveText({});
+      expect(text.length).toBeGreaterThan(15);
+      for (const ch of text) {
+        expect(['f', 'j', ' '].includes(ch)).toBe(true);
+      }
+    }
+
+    // Verify across all 30 days that no task ever asks for a key outside that day's cumulativeKeys
+    for (const dayPlan of t30) {
+      expect(dayPlan.tasks).toHaveLength(3);
+      const allowed = new Set([...dayPlan.cumulativeKeys, ' ', '\n']);
+      for (const task of dayPlan.tasks) {
+        const text = task.resolveText({});
+        expect(text.length).toBeGreaterThan(10);
+        for (const ch of text) {
+          expect(allowed.has(ch)).toBe(true);
+        }
+      }
+    }
+  });
+});

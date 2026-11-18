@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Calendar,
   BookOpen,
   Cpu,
   Gauge,
@@ -14,6 +15,8 @@ import {
   Sparkles,
   FolderOpen,
   RefreshCw,
+  CheckCircle2,
+  ArrowLeft,
 } from 'lucide-react';
 import { CURRICULUM_MODULES } from './data/curriculum';
 import {
@@ -26,6 +29,10 @@ import {
   CODE_SNIPPETS_POOL,
   generateWordTestText,
 } from './data/practicePools';
+import {
+  CalendarDayPlan,
+  generateTrackSchedule,
+} from './data/learningCalendar';
 import { KEYBOARD_LAYOUTS, KeyboardLayoutId } from './data/keyboardLayouts';
 import { SoundProfile } from './engine/soundEngine';
 import {
@@ -36,14 +43,23 @@ import {
 } from './store/useProgressStore';
 import { TypingArena } from './components/TypingArena';
 import { AnalyticsView } from './components/AnalyticsView';
+import { LearningCalendarView } from './components/LearningCalendarView';
 
-type NavTab = 'course' | 'adaptive' | 'speed' | 'quotes' | 'custom' | 'analytics';
+type NavTab =
+  | 'calendar'
+  | 'course'
+  | 'adaptive'
+  | 'speed'
+  | 'quotes'
+  | 'custom'
+  | 'analytics';
 
 export function App() {
   const {
     data,
     storagePath,
     updateSettings,
+    setCalendarTrack,
     recordCompletedSession,
     setAdaptiveUnlockedCount,
     saveCustomText,
@@ -51,8 +67,14 @@ export function App() {
     resetAllProgress,
   } = useProgressStore();
 
-  const [activeTab, setActiveTab] = useState<NavTab>('course');
+  const [activeTab, setActiveTab] = useState<NavTab>('calendar');
   const [isActivelyTyping, setIsActivelyTyping] = useState<boolean>(false);
+
+  // Guided Daily Calendar Workout Playlist state
+  const [activeCalendarWorkout, setActiveCalendarWorkout] = useState<{
+    dayPlan: CalendarDayPlan;
+    taskIndex: 0 | 1 | 2;
+  } | null>(null);
 
   // Course Mode state
   const [selectedModuleId, setSelectedModuleId] = useState<string>(
@@ -88,6 +110,20 @@ export function App() {
   const [showCustomEditor, setShowCustomEditor] = useState<boolean>(false);
 
   const levelInfo = calculateLevelFromXp(data.xp);
+
+  // Active Calendar Track Info for Sidebar badge
+  const currentTrackSchedule = useMemo(
+    () => generateTrackSchedule(data.calendar.activeTrack),
+    [data.calendar.activeTrack]
+  );
+  const completedTrackDays =
+    data.calendar.completedDaysByTrack[data.calendar.activeTrack] || {};
+  const nextCalendarDayNumber = useMemo(() => {
+    for (const d of currentTrackSchedule) {
+      if (!completedTrackDays[d.dayNumber]) return d.dayNumber;
+    }
+    return currentTrackSchedule.length;
+  }, [currentTrackSchedule, completedTrackDays]);
 
   // Active Course Module & Lesson
   const currentModule =
@@ -178,8 +214,24 @@ export function App() {
         <nav className="nav-menu" aria-label="Primary Modes">
           <button
             type="button"
+            className={`nav-item ${activeTab === 'calendar' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('calendar');
+              setActiveCalendarWorkout(null);
+            }}
+          >
+            <Calendar size={18} />
+            <span>Learning Calendar</span>
+            <span className="nav-day-pill">Day {nextCalendarDayNumber}</span>
+          </button>
+
+          <button
+            type="button"
             className={`nav-item ${activeTab === 'course' ? 'active' : ''}`}
-            onClick={() => setActiveTab('course')}
+            onClick={() => {
+              setActiveTab('course');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <BookOpen size={18} />
             <span>Touch-Typing Course</span>
@@ -188,7 +240,10 @@ export function App() {
           <button
             type="button"
             className={`nav-item ${activeTab === 'adaptive' ? 'active' : ''}`}
-            onClick={() => setActiveTab('adaptive')}
+            onClick={() => {
+              setActiveTab('adaptive');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <Cpu size={18} />
             <span>Adaptive Weak-Keys</span>
@@ -197,7 +252,10 @@ export function App() {
           <button
             type="button"
             className={`nav-item ${activeTab === 'speed' ? 'active' : ''}`}
-            onClick={() => setActiveTab('speed')}
+            onClick={() => {
+              setActiveTab('speed');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <Gauge size={18} />
             <span>Speed & N-Gram Tests</span>
@@ -206,7 +264,10 @@ export function App() {
           <button
             type="button"
             className={`nav-item ${activeTab === 'quotes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quotes')}
+            onClick={() => {
+              setActiveTab('quotes');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <Quote size={18} />
             <span>Quotes & Code</span>
@@ -215,7 +276,10 @@ export function App() {
           <button
             type="button"
             className={`nav-item ${activeTab === 'custom' ? 'active' : ''}`}
-            onClick={() => setActiveTab('custom')}
+            onClick={() => {
+              setActiveTab('custom');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <FileText size={18} />
             <span>Custom Text Studio</span>
@@ -224,7 +288,10 @@ export function App() {
           <button
             type="button"
             className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
-            onClick={() => setActiveTab('analytics')}
+            onClick={() => {
+              setActiveTab('analytics');
+              setActiveCalendarWorkout(null);
+            }}
           >
             <BarChart3 size={18} />
             <span>Analytics & Heatmap</span>
@@ -347,6 +414,176 @@ export function App() {
 
         {/* Active View Content */}
         <div className="content-container">
+          {/* 0. LEARNING CALENDAR & GUIDED DAILY WORKOUT PLAYLIST */}
+          {activeTab === 'calendar' && (
+            <>
+              {!activeCalendarWorkout ? (
+                <LearningCalendarView
+                  data={data}
+                  onSelectTrack={setCalendarTrack}
+                  onStartDayWorkout={(dayPlan, startTaskIndex) =>
+                    setActiveCalendarWorkout({
+                      dayPlan,
+                      taskIndex: startTaskIndex,
+                    })
+                  }
+                />
+              ) : (
+                (() => {
+                  const { dayPlan, taskIndex } = activeCalendarWorkout;
+                  const activeTask = dayPlan.tasks[taskIndex];
+                  const trackTasksDone =
+                    data.calendar.completedTasksByTrack[dayPlan.trackId] || {};
+                  const resolvedText = activeTask.resolveText(data.keyStats);
+
+                  const isLastTaskOfDay = taskIndex === 2;
+
+                  const handleAdvancePlaylist = () => {
+                    if (taskIndex < 2) {
+                      setActiveCalendarWorkout({
+                        dayPlan,
+                        taskIndex: (taskIndex + 1) as 0 | 1 | 2,
+                      });
+                    } else {
+                      // Finished all 3 tasks of the day! Return to calendar view
+                      setActiveCalendarWorkout(null);
+                    }
+                  };
+
+                  return (
+                    <>
+                      {/* Guided Daily Workout Stepper Banner */}
+                      <div className="guided-workout-banner">
+                        <div className="guided-banner-left">
+                          <button
+                            type="button"
+                            className="control-chip"
+                            onClick={() => setActiveCalendarWorkout(null)}
+                          >
+                            <ArrowLeft size={15} /> Back to Calendar
+                          </button>
+                          <div>
+                            <div className="guided-day-kicker">
+                              DAY {dayPlan.dayNumber} GUIDED WORKOUT · STEP{' '}
+                              {taskIndex + 1} OF 3
+                            </div>
+                            <h3 className="guided-day-title">{dayPlan.title}</h3>
+                          </div>
+                        </div>
+
+                        <div className="guided-stepper-pills">
+                          {dayPlan.tasks.map((t, idx) => {
+                            const done = Boolean(trackTasksDone[t.id]);
+                            const current = idx === taskIndex;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                className={[
+                                  'stepper-pill',
+                                  current ? 'stepper-pill-active' : '',
+                                  done ? 'stepper-pill-done' : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                                onClick={() =>
+                                  setActiveCalendarWorkout({
+                                    dayPlan,
+                                    taskIndex: idx as 0 | 1 | 2,
+                                  })
+                                }
+                              >
+                                {done ? (
+                                  <CheckCircle2 size={14} />
+                                ) : (
+                                  <span className="stepper-num">{idx + 1}</span>
+                                )}
+                                <span>
+                                  {idx === 0
+                                    ? 'Core Lesson'
+                                    : idx === 1
+                                    ? 'Weak-Keys'
+                                    : 'Benchmark'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <TypingArena
+                        mode={
+                          activeTask.type === 'lesson'
+                            ? 'course'
+                            : activeTask.type === 'adaptive'
+                            ? 'adaptive'
+                            : 'speed'
+                        }
+                        title={activeTask.title}
+                        subtitle={activeTask.subtitle}
+                        fingerTip={activeTask.fingerTip}
+                        targetText={resolvedText}
+                        targetWpm={activeTask.targetWpm}
+                        minAccuracy={activeTask.minAccuracy}
+                        errorMode={data.settings.courseErrorMode}
+                        onToggleErrorMode={(next) =>
+                          updateSettings({ courseErrorMode: next })
+                        }
+                        layoutId={data.settings.layout}
+                        caretStyle={data.settings.caretStyle}
+                        showVisualKeyboard={data.settings.showVisualKeyboard}
+                        showHandGuide={data.settings.showHandGuide}
+                        showFingerColors={data.settings.showFingerColors}
+                        onToggleVisualKeyboard={() =>
+                          updateSettings({
+                            showVisualKeyboard:
+                              !data.settings.showVisualKeyboard,
+                          })
+                        }
+                        onToggleHandGuide={() =>
+                          updateSettings({
+                            showHandGuide: !data.settings.showHandGuide,
+                          })
+                        }
+                        keyStats={data.keyStats}
+                        onComplete={(res) =>
+                          recordCompletedSession({
+                            mode:
+                              activeTask.type === 'lesson'
+                                ? 'course'
+                                : activeTask.type === 'adaptive'
+                                ? 'adaptive'
+                                : 'speed',
+                            label: `Day ${dayPlan.dayNumber} · ${activeTask.title}`,
+                            lessonId: activeTask.lessonId,
+                            calendarTaskInfo: {
+                              trackId: dayPlan.trackId,
+                              dayNumber: dayPlan.dayNumber,
+                              taskId: activeTask.id,
+                              allDayTaskIds: [
+                                dayPlan.tasks[0].id,
+                                dayPlan.tasks[1].id,
+                                dayPlan.tasks[2].id,
+                              ],
+                            },
+                            ...res,
+                          })
+                        }
+                        onNextOrRegenerate={handleAdvancePlaylist}
+                        nextButtonLabel={
+                          isLastTaskOfDay
+                            ? `Finish Day ${dayPlan.dayNumber} & Return to Calendar`
+                            : `Continue to Step ${taskIndex + 2} of 3`
+                        }
+                        onActiveTypingChange={setIsActivelyTyping}
+                      />
+                    </>
+                  );
+                })()
+              )}
+            </>
+          )}
+
           {/* 1. STRUCTURED TOUCH-TYPING COURSE */}
           {activeTab === 'course' && (
             <>
@@ -388,11 +625,7 @@ export function App() {
                         {stars > 0 && (
                           <span className="mini-stars">
                             {Array.from({ length: stars }).map((_, idx) => (
-                              <Star
-                                key={idx}
-                                size={11}
-                                fill="currentColor"
-                              />
+                              <Star key={idx} size={11} fill="currentColor" />
                             ))}
                           </span>
                         )}
@@ -926,7 +1159,14 @@ export function App() {
                 </div>
 
                 {showCustomEditor && (
-                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                    }}
+                  >
                     <textarea
                       className="custom-textarea"
                       value={customDraft}

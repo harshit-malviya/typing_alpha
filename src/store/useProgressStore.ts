@@ -3,6 +3,7 @@ import { ErrorMode, KeyTelemetryDelta } from '../engine/typingEngine';
 import { SoundProfile, soundEngine } from '../engine/soundEngine';
 import { KeyboardLayoutId } from '../data/keyboardLayouts';
 import { INITIAL_UNLOCKED_COUNT, evaluateAdaptiveUnlock } from '../engine/adaptiveGenerator';
+import { CalendarTrackId } from '../data/learningCalendar';
 
 export type ThemeId =
   | 'dark-slate'
@@ -34,6 +35,22 @@ export interface SessionHistoryItem {
   stars?: 0 | 1 | 2 | 3;
 }
 
+export interface DailyActivityRecord {
+  date: string; // YYYY-MM-DD
+  sessions: number;
+  secondsTyped: number;
+  bestWpm: number;
+  tasksCompleted: number;
+  daysCompleted: number[];
+}
+
+export interface UserCalendarState {
+  activeTrack: CalendarTrackId;
+  completedTasksByTrack: Record<CalendarTrackId, Record<string, string>>; // taskId -> ISO timestamp
+  completedDaysByTrack: Record<CalendarTrackId, Record<number, string>>; // dayNumber -> YYYY-MM-DD
+  dailyActivityLog: Record<string, DailyActivityRecord>; // YYYY-MM-DD -> DailyActivityRecord
+}
+
 export interface UserSettings {
   theme: ThemeId;
   layout: KeyboardLayoutId;
@@ -60,6 +77,7 @@ export interface UserProgressData {
   keyStats: Record<string, KeyTelemetryDelta>;
   history: SessionHistoryItem[];
   customTextSaved: string;
+  calendar: UserCalendarState;
   settings: UserSettings;
 }
 
@@ -77,8 +95,23 @@ declare global {
 
 const LOCAL_STORAGE_KEY = 'typing_alpha_progress_v1';
 
+export const DEFAULT_CALENDAR_STATE: UserCalendarState = {
+  activeTrack: '30-day',
+  completedTasksByTrack: {
+    '14-day': {},
+    '30-day': {},
+    '60-day': {},
+  },
+  completedDaysByTrack: {
+    '14-day': {},
+    '30-day': {},
+    '60-day': {},
+  },
+  dailyActivityLog: {},
+};
+
 export const DEFAULT_PROGRESS_DATA: UserProgressData = {
-  version: 1,
+  version: 2,
   xp: 0,
   streakDays: 0,
   lastActiveDate: null,
@@ -90,6 +123,7 @@ export const DEFAULT_PROGRESS_DATA: UserProgressData = {
   history: [],
   customTextSaved:
     'Paste any English paragraph, study notes, or book excerpt here to practice typing it with real-time finger guidance and WPM tracking.',
+  calendar: DEFAULT_CALENDAR_STATE,
   settings: {
     theme: 'dark-slate',
     layout: 'qwerty-us',
@@ -107,6 +141,7 @@ export const DEFAULT_PROGRESS_DATA: UserProgressData = {
 
 function mergeWithDefaults(partial: Partial<UserProgressData> | null): UserProgressData {
   if (!partial || typeof partial !== 'object') return DEFAULT_PROGRESS_DATA;
+  const cal = partial.calendar || ({} as Partial<UserCalendarState>);
   return {
     ...DEFAULT_PROGRESS_DATA,
     ...partial,
@@ -114,13 +149,27 @@ function mergeWithDefaults(partial: Partial<UserProgressData> | null): UserProgr
       ...DEFAULT_PROGRESS_DATA.settings,
       ...(partial.settings || {}),
     },
+    calendar: {
+      activeTrack: cal.activeTrack || '30-day',
+      completedTasksByTrack: {
+        '14-day': cal.completedTasksByTrack?.['14-day'] || {},
+        '30-day': cal.completedTasksByTrack?.['30-day'] || {},
+        '60-day': cal.completedTasksByTrack?.['60-day'] || {},
+      },
+      completedDaysByTrack: {
+        '14-day': cal.completedDaysByTrack?.['14-day'] || {},
+        '30-day': cal.completedDaysByTrack?.['30-day'] || {},
+        '60-day': cal.completedDaysByTrack?.['60-day'] || {},
+      },
+      dailyActivityLog: cal.dailyActivityLog || {},
+    },
     lessons: partial.lessons || {},
     keyStats: partial.keyStats || {},
     history: Array.isArray(partial.history) ? partial.history : [],
   };
 }
 
-function getTodayDateString(): string {
+export function getTodayDateString(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
     now.getDate()
@@ -141,7 +190,6 @@ export function calculateLevelFromXp(xp: number): {
   nextLevelXp: number;
   progressPercent: number;
 } {
-  // Every level requires 250 * level XP
   let level = 1;
   let remaining = Math.max(0, xp);
   let needed = 250;
@@ -225,27 +273,43 @@ export function useProgressStore() {
     }
   }, []);
 
-  const updateSettings = useCallback(
-    (patch: Partial<UserSettings>) => {
-      setData((prev) => {
-        const next: UserProgressData = {
-          ...prev,
-          settings: {
-            ...prev.settings,
-            ...patch,
-          },
-        };
-        try {
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
-        } catch {}
-        if (window.electronAPI) {
-          window.electronAPI.saveProgress(next).catch(() => {});
-        }
-        return next;
-      });
-    },
-    []
-  );
+  const updateSettings = useCallback((patch: Partial<UserSettings>) => {
+    setData((prev) => {
+      const next: UserProgressData = {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          ...patch,
+        },
+      };
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      if (window.electronAPI) {
+        window.electronAPI.saveProgress(next).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
+
+  const setCalendarTrack = useCallback((trackId: CalendarTrackId) => {
+    setData((prev) => {
+      const next: UserProgressData = {
+        ...prev,
+        calendar: {
+          ...prev.calendar,
+          activeTrack: trackId,
+        },
+      };
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      if (window.electronAPI) {
+        window.electronAPI.saveProgress(next).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
 
   const recordCompletedSession = useCallback(
     (params: {
@@ -258,12 +322,26 @@ export function useProgressStore() {
       durationSec: number;
       stars: 0 | 1 | 2 | 3;
       keyStatsDelta: Record<string, KeyTelemetryDelta>;
-    }): { newlyUnlockedLetter: string | null; xpGained: number } => {
+      calendarTaskInfo?: {
+        trackId: CalendarTrackId;
+        dayNumber: number;
+        taskId: string;
+        allDayTaskIds: [string, string, string];
+      };
+    }): {
+      newlyUnlockedLetter: string | null;
+      xpGained: number;
+      dayJustCompleted: boolean;
+    } => {
       let newlyUnlocked: string | null = null;
-      const xpGained =
+      let dayJustCompleted = false;
+
+      const baseXp =
         Math.round(params.netWpm * 1.5) +
         params.stars * 25 +
         (params.accuracy >= 96 ? 20 : 5);
+
+      let totalXpEarned = baseXp;
 
       setData((prev) => {
         // Merge per-key telemetry
@@ -295,7 +373,7 @@ export function useProgressStore() {
           }
         }
 
-        // Update lesson record if course mode
+        // Update lesson record if lessonId is provided
         const nextLessons = { ...prev.lessons };
         if (params.lessonId) {
           const existingLesson = nextLessons[params.lessonId];
@@ -317,6 +395,68 @@ export function useProgressStore() {
           newlyUnlocked = evalRes.newlyUnlockedLetter;
         }
 
+        // Update Calendar Task & Daily Activity Log
+        const nextCalendar: UserCalendarState = {
+          ...prev.calendar,
+          completedTasksByTrack: {
+            ...prev.calendar.completedTasksByTrack,
+          },
+          completedDaysByTrack: {
+            ...prev.calendar.completedDaysByTrack,
+          },
+          dailyActivityLog: {
+            ...prev.calendar.dailyActivityLog,
+          },
+        };
+
+        const existingDaily = nextCalendar.dailyActivityLog[today] || {
+          date: today,
+          sessions: 0,
+          secondsTyped: 0,
+          bestWpm: 0,
+          tasksCompleted: 0,
+          daysCompleted: [],
+        };
+
+        let addedTaskCount = 0;
+        const nextDaysCompletedList = [...existingDaily.daysCompleted];
+
+        if (params.calendarTaskInfo) {
+          const { trackId, dayNumber, taskId, allDayTaskIds } = params.calendarTaskInfo;
+          const trackTasks = {
+            ...(nextCalendar.completedTasksByTrack[trackId] || {}),
+          };
+          if (!trackTasks[taskId]) {
+            addedTaskCount = 1;
+          }
+          trackTasks[taskId] = new Date().toISOString();
+          nextCalendar.completedTasksByTrack[trackId] = trackTasks;
+
+          // Check if all 3 tasks for this day are now complete
+          const allThreeDone = allDayTaskIds.every((id) => Boolean(trackTasks[id]));
+          const trackDays = {
+            ...(nextCalendar.completedDaysByTrack[trackId] || {}),
+          };
+          if (allThreeDone && !trackDays[dayNumber]) {
+            trackDays[dayNumber] = today;
+            nextCalendar.completedDaysByTrack[trackId] = trackDays;
+            dayJustCompleted = true;
+            totalXpEarned += 100; // +100 Bonus XP for completing a full calendar day!
+            if (!nextDaysCompletedList.includes(dayNumber)) {
+              nextDaysCompletedList.push(dayNumber);
+            }
+          }
+        }
+
+        nextCalendar.dailyActivityLog[today] = {
+          date: today,
+          sessions: existingDaily.sessions + 1,
+          secondsTyped: existingDaily.secondsTyped + Math.round(params.durationSec),
+          bestWpm: Math.max(existingDaily.bestWpm, params.netWpm),
+          tasksCompleted: existingDaily.tasksCompleted + addedTaskCount,
+          daysCompleted: nextDaysCompletedList,
+        };
+
         const sessionItem: SessionHistoryItem = {
           id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           timestamp: new Date().toISOString(),
@@ -331,7 +471,7 @@ export function useProgressStore() {
 
         const next: UserProgressData = {
           ...prev,
-          xp: prev.xp + xpGained,
+          xp: prev.xp + totalXpEarned,
           streakDays: nextStreak,
           lastActiveDate: today,
           totalSecondsTyped: prev.totalSecondsTyped + Math.round(params.durationSec),
@@ -339,6 +479,7 @@ export function useProgressStore() {
           adaptiveUnlockedCount: nextUnlockedCount,
           lessons: nextLessons,
           keyStats: mergedKeyStats,
+          calendar: nextCalendar,
           history: [sessionItem, ...prev.history].slice(0, 120),
         };
 
@@ -351,7 +492,11 @@ export function useProgressStore() {
         return next;
       });
 
-      return { newlyUnlockedLetter: newlyUnlocked, xpGained };
+      return {
+        newlyUnlockedLetter: newlyUnlocked,
+        xpGained: totalXpEarned,
+        dayJustCompleted,
+      };
     },
     []
   );
@@ -399,6 +544,7 @@ export function useProgressStore() {
     isLoaded,
     storagePath,
     updateSettings,
+    setCalendarTrack,
     recordCompletedSession,
     setAdaptiveUnlockedCount,
     saveCustomText,
