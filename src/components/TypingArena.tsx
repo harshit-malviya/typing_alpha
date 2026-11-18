@@ -96,8 +96,16 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   const [isTimedOut, setIsTimedOut] = useState<boolean>(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const textBoxRef = useRef<HTMLDivElement | null>(null);
   const activeCharRef = useRef<HTMLSpanElement | null>(null);
   const completedDispatchedRef = useRef<boolean>(false);
+  const [caretPos, setCaretPos] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    visible: boolean;
+  }>({ x: 0, y: 0, width: 14, height: 32, visible: false });
 
   // Reset whenever targetText changes
   useEffect(() => {
@@ -107,6 +115,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     setIsTimedOut(false);
     completedDispatchedRef.current = false;
     onActiveTypingChange?.(false);
+    if (textBoxRef.current) {
+      textBoxRef.current.scrollTop = 0;
+    }
     containerRef.current?.focus();
   }, [targetText]);
 
@@ -130,15 +141,37 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     return () => clearInterval(interval);
   }, [typingState.startTimeMs, isFinished, timeLimitSeconds]);
 
-  // Keep active character scrolled smoothly into view for multi-line texts
+  // Measure active character position for the smooth gliding caret & keep container scrolled cleanly
   useEffect(() => {
-    if (activeCharRef.current) {
-      activeCharRef.current.scrollIntoView({
-        block: 'nearest',
-        behavior: 'smooth',
-      });
-    }
-  }, [typingState.cursorIndex]);
+    const updateCaretAndScroll = () => {
+      const charEl = activeCharRef.current;
+      const boxEl = textBoxRef.current;
+      if (!charEl || !boxEl || isFinished) {
+        setCaretPos((prev) => ({ ...prev, visible: false }));
+        return;
+      }
+
+      const x = charEl.offsetLeft;
+      const y = charEl.offsetTop;
+      const width = Math.max(10, charEl.offsetWidth);
+      const height = Math.max(24, charEl.offsetHeight);
+
+      setCaretPos({ x, y, width, height, visible: true });
+
+      // Smoothly keep the active line vertically centered inside textBoxRef without scrolling the whole page
+      const desiredScrollTop = y - boxEl.clientHeight / 2 + height / 2;
+      if (Math.abs(boxEl.scrollTop - desiredScrollTop) > height * 0.75) {
+        boxEl.scrollTo({
+          top: Math.max(0, desiredScrollTop),
+          behavior: 'smooth',
+        });
+      }
+    };
+
+    updateCaretAndScroll();
+    window.addEventListener('resize', updateCaretAndScroll);
+    return () => window.removeEventListener('resize', updateCaretAndScroll);
+  }, [typingState.cursorIndex, typingState.targetText, isFinished, caretStyle]);
 
   const metrics = useMemo(
     () => calculateMetrics(typingState, nowTick, targetWpm, minAccuracy),
@@ -377,56 +410,131 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
       {/* Main Text Display Box */}
       <div
+        ref={textBoxRef}
         className={`typing-text-box caret-style-${caretStyle} ${
           mode === 'code' ? 'code-font-box' : ''
         }`}
       >
-        {typingState.targetText.split('').map((char, idx) => {
-          const isCurrent = idx === typingState.cursorIndex && !isFinished;
-          const isTyped = idx < typingState.cursorIndex;
-          const typedChar = typingState.typedChars[idx];
-          const isCorrect = isTyped && typedChar === char;
-          const isWrong = isTyped && typedChar !== char;
-          const hadPastMistake = isCorrect && typingState.hadErrorAt[idx];
-          const isBlockedError = isCurrent && typingState.blockedErrorChar !== null;
+        {/* True Hardware-Accelerated Smooth Gliding Caret */}
+        {caretPos.visible && !isFinished && (
+          <div
+            className={`smooth-caret smooth-caret-${caretStyle} ${
+              typingState.startTimeMs === null ? 'smooth-caret-idle' : ''
+            }`}
+            style={{
+              transform: `translate3d(${caretPos.x}px, ${caretPos.y}px, 0)`,
+              width: caretStyle === 'line' ? '3px' : `${caretPos.width}px`,
+              height:
+                caretStyle === 'underline'
+                  ? '3px'
+                  : `${Math.max(22, caretPos.height - 4)}px`,
+              marginTop:
+                caretStyle === 'underline'
+                  ? `${caretPos.height - 3}px`
+                  : '2px',
+            }}
+          />
+        )}
 
-          let statusClass = 'char-pending';
-          if (isCorrect) {
-            statusClass = hadPastMistake ? 'char-corrected' : 'char-correct';
-          } else if (isWrong) {
-            statusClass = 'char-wrong';
-          }
-          if (isCurrent) {
-            statusClass += ' char-current';
-          }
-          if (isBlockedError) {
-            statusClass += ' char-blocked-error';
+        {(() => {
+          // Group characters into non-breaking word groups + explicit space/newline tokens
+          // so words never split mid-word across wrapped lines and the gliding caret stays locked.
+          const chars = typingState.targetText.split('');
+          const groups: { type: 'word' | 'space' | 'newline'; indices: number[] }[] = [];
+
+          let currentWord: number[] = [];
+          chars.forEach((ch, idx) => {
+            if (ch === '\n') {
+              if (currentWord.length > 0) {
+                groups.push({ type: 'word', indices: currentWord });
+                currentWord = [];
+              }
+              groups.push({ type: 'newline', indices: [idx] });
+            } else if (ch === ' ') {
+              if (currentWord.length > 0) {
+                groups.push({ type: 'word', indices: currentWord });
+                currentWord = [];
+              }
+              groups.push({ type: 'space', indices: [idx] });
+            } else {
+              currentWord.push(idx);
+            }
+          });
+          if (currentWord.length > 0) {
+            groups.push({ type: 'word', indices: currentWord });
           }
 
-          if (char === '\n') {
+          const renderCharSpan = (idx: number) => {
+            const char = chars[idx];
+            const isCurrent = idx === typingState.cursorIndex && !isFinished;
+            const isTyped = idx < typingState.cursorIndex;
+            const typedChar = typingState.typedChars[idx];
+            const isCorrect = isTyped && typedChar === char;
+            const isWrong = isTyped && typedChar !== char;
+            const hadPastMistake = isCorrect && typingState.hadErrorAt[idx];
+            const isBlockedError =
+              isCurrent && typingState.blockedErrorChar !== null;
+
+            let statusClass = 'char-pending';
+            if (isCorrect) {
+              statusClass = hadPastMistake ? 'char-corrected' : 'char-correct';
+            } else if (isWrong) {
+              statusClass = 'char-wrong';
+            }
+            if (isCurrent) {
+              statusClass += ' char-current';
+            }
+            if (isBlockedError) {
+              statusClass += ' char-blocked-error';
+            }
+
+            if (char === '\n') {
+              return (
+                <React.Fragment key={idx}>
+                  <span
+                    ref={isCurrent ? activeCharRef : undefined}
+                    className={`typing-char char-newline ${statusClass}`}
+                  >
+                    ↵
+                  </span>
+                  <br />
+                </React.Fragment>
+              );
+            }
+
             return (
-              <React.Fragment key={idx}>
-                <span
-                  ref={isCurrent ? activeCharRef : undefined}
-                  className={`typing-char char-newline ${statusClass}`}
-                >
-                  ↵
-                </span>
-                <br />
-              </React.Fragment>
+              <span
+                key={idx}
+                ref={isCurrent ? activeCharRef : undefined}
+                className={`typing-char ${
+                  char === ' ' ? 'char-space' : ''
+                } ${statusClass}`}
+                data-wrong-char={
+                  isWrong && typedChar && typedChar !== ' '
+                    ? typedChar
+                    : isBlockedError &&
+                      typingState.blockedErrorChar &&
+                      typingState.blockedErrorChar !== ' '
+                    ? typingState.blockedErrorChar
+                    : undefined
+                }
+              >
+                {char === ' ' ? (isWrong ? '␣' : '\u00A0') : char}
+              </span>
             );
-          }
+          };
 
-          return (
-            <span
-              key={idx}
-              ref={isCurrent ? activeCharRef : undefined}
-              className={`typing-char ${statusClass}`}
-            >
-              {char === ' ' ? (isWrong ? '␣' : '\u00A0') : char}
-            </span>
-          );
-        })}
+          return groups.map((g, gIdx) => {
+            if (g.type === 'word') {
+              return (
+                <span key={`w-${gIdx}`} className="typing-word">
+                  {g.indices.map(renderCharSpan)}
+                </span>
+              );
+            }
+            return renderCharSpan(g.indices[0]);
+          });
+        })()}
       </div>
 
       {/* Post-Session Results Overlay Card */}
