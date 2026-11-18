@@ -10,6 +10,7 @@ function getProgressFilePath() {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.ico');
   const mainWindow = new BrowserWindow({
     width: 1380,
     height: 880,
@@ -17,6 +18,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#0f172a',
     title: 'TypingAlpha — English Touch-Typing Trainer',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

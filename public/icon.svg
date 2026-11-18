@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+    <linearGradient id="keySide" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="keyTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="alphaGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Rounded App Badge -->
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#bgBadge)" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.45" />
+
+  <!-- 3D Mechanical Keycap Base / Housing Shadow -->
+  <rect x="34" y="42" width="188" height="184" rx="36" fill="url(#keySide)" />
+
+  <!-- 3D Keycap Top Dish -->
+  <rect x="46" y="46" width="164" height="152" rx="28" fill="url(#keyTop)" stroke="#38bdf8" stroke-width="3" stroke-opacity="0.65" />
+
+  <!-- Greek Alpha Symbol (α) -->
+  <text
+    x="128"
+    y="150"
+    text-anchor="middle"
+    font-family="Inter, Segoe UI, sans-serif"
+    font-size="112"
+    font-weight="800"
+    fill="url(#alphaGlow)"
+  >α</text>
+
+  <!-- Tactile Home-Row Bump (F / J Anchor Indicator) -->
+  <rect x="98" y="176" width="60" height="6" rx="3" fill="#38bdf8" />
+</svg>

@@ -12,8 +12,9 @@
     "test": "vitest run",
     "electron:start": "electron .",
     "electron:dev": "concurrently -k \"vite --port 5173\" \"wait-on http://localhost:5173 && electron . --dev\"",
-    "electron:pack": "npm run build && electron-builder --dir",
-    "electron:dist": "npm run build && electron-builder"
+    "icon:gen": "node scripts/generate-icon.mjs",
+    "electron:pack": "node scripts/generate-icon.mjs && npm run build && electron-builder --dir",
+    "electron:dist": "node scripts/generate-icon.mjs && npm run build && electron-builder"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -37,13 +38,41 @@
     "productName": "TypingAlpha",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "build/icon.ico",
+      "build/icon.png"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TypingAlpha",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     },
     "directories": {
       "output": "release"
