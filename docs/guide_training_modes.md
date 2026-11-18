@@ -56,4 +56,7 @@ Test and push your raw speed across customizable configurations:
 - **Dual-Hand SVG Finger Guide**: Displays Left and Right hands alongside a central callout telling you which exact finger to press.
 - **Keyboard Layouts**: Switch between **US QWERTY**, **UK QWERTY**, **Dvorak**, and **Colemak** in the top bar.
 - **Mechanical Switch Sound Synthesizer**: Built-in Web Audio API synthesizer offering **Cherry MX Blue (Clicky)**, **Cherry MX Brown (Tactile)**, **Cherry MX Red (Linear Thock)**, **Vintage Typewriter**, or **Muted**.
-- **5 Built-In Themes & Smooth Caret**: Switch instantly between `Dark Slate`, `Serika Dark`, `Cyberpunk Neon`, `Catppuccin Mocha`, and `Light Paper`, plus choose between `Smooth Line (|)`, `Solid Block (█)`, or `Underline (_)` carets and **Zen Focus Mode**.
+- **5 Predefined Themes + Live Theme Studio (Inherit & Customize)**:
+  - Switch instantly between `Dark Slate`, `Serika Dark`, `Cyberpunk Neon`, `Catppuccin Mocha`, and `Light Paper`.
+  - Click **Customize Theme** in the top bar to open the **Theme Studio**: inherit base colors from any predefined theme, customize the **Smart 8-Color Palette** with real-time live preview across the entire app, and click **Save as New Theme Copy** (or export/import Theme JSON).
+- **Smooth Caret & Zen Mode**: Choose between `Smooth Line (|)`, `Solid Block (█)`, or `Underline (_)` carets and toggle **Zen Focus Mode**.

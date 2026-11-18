@@ -4,13 +4,9 @@ import { SoundProfile, soundEngine } from '../engine/soundEngine';
 import { KeyboardLayoutId } from '../data/keyboardLayouts';
 import { INITIAL_UNLOCKED_COUNT, evaluateAdaptiveUnlock } from '../engine/adaptiveGenerator';
 import { CalendarTrackId } from '../data/learningCalendar';
+import { CustomThemeDef, applyThemeToDom } from '../data/themeRegistry';
 
-export type ThemeId =
-  | 'dark-slate'
-  | 'serika-dark'
-  | 'cyberpunk-neon'
-  | 'catppuccin-mocha'
-  | 'light-paper';
+export type ThemeId = string;
 
 export type CaretStyle = 'line' | 'block' | 'underline';
 
@@ -77,6 +73,7 @@ export interface UserProgressData {
   keyStats: Record<string, KeyTelemetryDelta>;
   history: SessionHistoryItem[];
   customTextSaved: string;
+  customThemes: CustomThemeDef[];
   calendar: UserCalendarState;
   settings: UserSettings;
 }
@@ -123,6 +120,7 @@ export const DEFAULT_PROGRESS_DATA: UserProgressData = {
   history: [],
   customTextSaved:
     'Paste any English paragraph, study notes, or book excerpt here to practice typing it with real-time finger guidance and WPM tracking.',
+  customThemes: [],
   calendar: DEFAULT_CALENDAR_STATE,
   settings: {
     theme: 'dark-slate',
@@ -165,6 +163,7 @@ function mergeWithDefaults(partial: Partial<UserProgressData> | null): UserProgr
     },
     lessons: partial.lessons || {},
     keyStats: partial.keyStats || {},
+    customThemes: Array.isArray(partial.customThemes) ? partial.customThemes : [],
     history: Array.isArray(partial.history) ? partial.history : [],
   };
 }
@@ -254,12 +253,17 @@ export function useProgressStore() {
     };
   }, []);
 
-  // Sync audio & theme settings whenever data.settings changes
+  // Sync audio & theme settings whenever data.settings or data.customThemes changes
   useEffect(() => {
     soundEngine.setProfile(data.settings.soundProfile);
     soundEngine.setVolume(data.settings.soundVolume);
-    document.documentElement.setAttribute('data-theme', data.settings.theme);
-  }, [data.settings.soundProfile, data.settings.soundVolume, data.settings.theme]);
+    applyThemeToDom(data.settings.theme, data.customThemes);
+  }, [
+    data.settings.soundProfile,
+    data.settings.soundVolume,
+    data.settings.theme,
+    data.customThemes,
+  ]);
 
   const persist = useCallback((nextData: UserProgressData) => {
     setData(nextData);
@@ -521,6 +525,64 @@ export function useProgressStore() {
     [data, persist]
   );
 
+  const saveCustomTheme = useCallback(
+    (theme: CustomThemeDef, setAsActive: boolean = true) => {
+      setData((prev) => {
+        const existsIdx = prev.customThemes.findIndex((t) => t.id === theme.id);
+        let nextThemes: CustomThemeDef[];
+        if (existsIdx >= 0) {
+          nextThemes = [...prev.customThemes];
+          nextThemes[existsIdx] = theme;
+        } else {
+          nextThemes = [...prev.customThemes, theme];
+        }
+
+        const next: UserProgressData = {
+          ...prev,
+          customThemes: nextThemes,
+          settings: setAsActive
+            ? { ...prev.settings, theme: theme.id }
+            : prev.settings,
+        };
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+        } catch {}
+        if (window.electronAPI) {
+          window.electronAPI.saveProgress(next).catch(() => {});
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const deleteCustomTheme = useCallback((themeId: string) => {
+    setData((prev) => {
+      const target = prev.customThemes.find((t) => t.id === themeId);
+      const nextThemes = prev.customThemes.filter((t) => t.id !== themeId);
+      const fallbackTheme =
+        prev.settings.theme === themeId
+          ? target?.baseThemeId || 'dark-slate'
+          : prev.settings.theme;
+
+      const next: UserProgressData = {
+        ...prev,
+        customThemes: nextThemes,
+        settings: {
+          ...prev.settings,
+          theme: fallbackTheme,
+        },
+      };
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      if (window.electronAPI) {
+        window.electronAPI.saveProgress(next).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
+
   const importProgressJson = useCallback(
     (rawJson: string): boolean => {
       try {
@@ -548,6 +610,8 @@ export function useProgressStore() {
     recordCompletedSession,
     setAdaptiveUnlockedCount,
     saveCustomText,
+    saveCustomTheme,
+    deleteCustomTheme,
     importProgressJson,
     resetAllProgress,
   };

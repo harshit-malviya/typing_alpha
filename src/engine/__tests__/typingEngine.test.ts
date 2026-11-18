@@ -134,3 +134,36 @@ describe('learningCalendar', () => {
     }
   });
 });
+
+
+import {
+  BUILT_IN_THEMES,
+  deriveCssVariablesFromPalette,
+  resolvePaletteForThemeId,
+  validateAndParseCustomThemeJson,
+} from '../../data/themeRegistry';
+
+describe('themeRegistry', () => {
+  it('inherits predefined palettes, derives all 15 CSS variables, and validates custom theme JSON', () => {
+    const serika = resolvePaletteForThemeId('serika-dark', []);
+    expect(serika.accentPrimary).toBe('#e2b714');
+
+    const vars = deriveCssVariablesFromPalette(serika);
+    expect(vars['--bg-primary']).toBe('#323437');
+    expect(vars['--accent-primary']).toBe('#e2b714');
+    expect(Object.keys(vars)).toHaveLength(15);
+
+    const validJson = JSON.stringify({
+      name: 'Midnight Emerald',
+      baseThemeId: 'dark-slate',
+      palette: {
+        ...BUILT_IN_THEMES['dark-slate'].palette,
+        accentPrimary: '#10b981',
+      },
+    });
+    const parsed = validateAndParseCustomThemeJson(validJson);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.name).toBe('Midnight Emerald');
+    expect(parsed?.palette.accentPrimary).toBe('#10b981');
+  });
+});

@@ -44,6 +44,8 @@ import {
 import { TypingArena } from './components/TypingArena';
 import { AnalyticsView } from './components/AnalyticsView';
 import { LearningCalendarView } from './components/LearningCalendarView';
+import { ThemeStudioModal } from './components/ThemeStudioModal';
+import { BUILT_IN_THEMES } from './data/themeRegistry';
 
 type NavTab =
   | 'calendar'
@@ -63,12 +65,15 @@ export function App() {
     recordCompletedSession,
     setAdaptiveUnlockedCount,
     saveCustomText,
+    saveCustomTheme,
+    deleteCustomTheme,
     importProgressJson,
     resetAllProgress,
   } = useProgressStore();
 
   const [activeTab, setActiveTab] = useState<NavTab>('calendar');
   const [isActivelyTyping, setIsActivelyTyping] = useState<boolean>(false);
+  const [showThemeStudio, setShowThemeStudio] = useState<boolean>(false);
 
   // Guided Daily Calendar Workout Playlist state
   const [activeCalendarWorkout, setActiveCalendarWorkout] = useState<{
@@ -389,13 +394,33 @@ export function App() {
                   updateSettings({ theme: e.target.value as ThemeId })
                 }
               >
-                <option value="dark-slate">Dark Slate</option>
-                <option value="serika-dark">Serika Dark</option>
-                <option value="cyberpunk-neon">Cyberpunk Neon</option>
-                <option value="catppuccin-mocha">Catppuccin Mocha</option>
-                <option value="light-paper">Light Paper</option>
+                <optgroup label="Predefined Themes">
+                  {Object.values(BUILT_IN_THEMES).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {data.customThemes.length > 0 && (
+                  <optgroup label="My Custom Themes">
+                    {data.customThemes.map((ct) => (
+                      <option key={ct.id} value={ct.id}>
+                        ★ {ct.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
+
+            <button
+              type="button"
+              className={`control-chip ${showThemeStudio ? 'chip-active' : ''}`}
+              onClick={() => setShowThemeStudio(true)}
+              title="Open Theme Studio to inherit & customize a theme"
+            >
+              <Palette size={14} /> Customize Theme
+            </button>
 
             <button
               type="button"
@@ -411,6 +436,17 @@ export function App() {
             </button>
           </div>
         </header>
+
+        {showThemeStudio && (
+          <ThemeStudioModal
+            activeThemeId={data.settings.theme}
+            customThemes={data.customThemes}
+            onSelectTheme={(themeId) => updateSettings({ theme: themeId })}
+            onSaveCustomTheme={saveCustomTheme}
+            onDeleteCustomTheme={deleteCustomTheme}
+            onClose={() => setShowThemeStudio(false)}
+          />
+        )}
 
         {/* Active View Content */}
         <div className="content-container">
